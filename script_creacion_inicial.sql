@@ -1036,17 +1036,25 @@ GO
 
 --Una misma bicicleta nunca puede estar alquilada a dos clientes al mismo tiempo.
 --Se crea despues de la migracion porque la Maestra ya trae alquileres superpuestos
---(inconsistencia de origen documentada): el trigger controla los alquileres nuevos.
+--(inconsistencia de origen documentada): el trigger controla los alquileres nuevos
+--y las modificaciones de fechas o de bicicleta de alquileres existentes.
 --Si no hay devolucion real, se toma como fin del alquiler la devolucion pactada.
 CREATE TRIGGER MEGA_DB.tr_Alquiler_Sin_Superposicion
 ON MEGA_DB.Alquiler
-AFTER INSERT
+AFTER INSERT, UPDATE
 AS
 BEGIN
     --Evita los mensajes de "filas afectadas"
     SET NOCOUNT ON;
 
-    --Busca otro alquiler de la misma bici cuyo rango de fechas se pise con el insertado
+    --En un UPDATE solo se controla si cambio algo que afecta la superposicion
+    --(asi, modificar otros campos de un alquiler de origen superpuesto no falla).
+    --En un INSERT, UPDATE() devuelve verdadero para todas las columnas.
+    IF NOT (UPDATE(bicicleta_alquiler_id) OR UPDATE(fecha_inicio)
+            OR UPDATE(fecha_devolucion_pactada) OR UPDATE(fecha_devolucion_real))
+        RETURN;
+
+    --Busca otro alquiler de la misma bici cuyo rango de fechas se pise con el insertado o modificado
     IF EXISTS (
         SELECT 1
         FROM inserted i
@@ -1055,7 +1063,7 @@ BEGIN
         WHERE i.fecha_inicio < ISNULL(a.fecha_devolucion_real, a.fecha_devolucion_pactada)
           AND a.fecha_inicio < ISNULL(i.fecha_devolucion_real, i.fecha_devolucion_pactada)
     )
-        --Si hay superposicion se cancela el insert (el error deshace la sentencia)
+        --Si hay superposicion se cancela la operacion (el error deshace la sentencia)
         THROW 50001, 'La bicicleta ya tiene un alquiler en ese rango de fechas', 1;
 END
 GO
