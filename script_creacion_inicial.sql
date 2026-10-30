@@ -1038,7 +1038,8 @@ GO
 --Se crea despues de la migracion porque la Maestra ya trae alquileres superpuestos
 --(inconsistencia de origen documentada): el trigger controla los alquileres nuevos
 --y las modificaciones de fechas o de bicicleta de alquileres existentes.
---Si no hay devolucion real, se toma como fin del alquiler la devolucion pactada.
+--Si no hay devolucion real se toma como que el alquiler no terminó, 
+--es decir su fecha devolución es "infinita" o en este script representado con 31 de diciembre de 9999.
 CREATE TRIGGER MEGA_DB.tr_Alquiler_Sin_Superposicion
 ON MEGA_DB.Alquiler
 AFTER INSERT, UPDATE
