@@ -363,7 +363,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Ubicaciones
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
 	--Provincias: union de las cuatro columnas de provincia de la Maestra, sin repetidos
@@ -398,7 +398,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Locales
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
 	--Un local por cada combinacion distinta de sus datos; la localidad se busca
@@ -427,7 +427,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Enums
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
 	--Formas de pago distintas que aparecen en la Maestra
@@ -485,7 +485,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Personas
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
 	--Personas: union de los datos de empleados y de clientes de la Maestra.
@@ -560,7 +560,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Productos
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
     --Modelos de bicicleta distintos, con su marca y categoria
@@ -621,7 +621,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Alquileres
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
     --Bicicletas de alquiler distintas con su modelo, local, estado y precios
@@ -668,7 +668,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Ventas
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
     --Cabeceras de venta: una por nro de venta, con cliente y empleado buscados
@@ -705,7 +705,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Compras
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
     --Proveedores distintos (por CUIT) con su localidad
@@ -746,7 +746,7 @@ GO
 CREATE PROCEDURE MEGA_DB.sp_Migrar_Reparaciones
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
     --Reparaciones: una por nro de reparacion, con cliente, empleado, local,
     --modelo de la bici y estado
@@ -1044,27 +1044,24 @@ ON MEGA_DB.Alquiler
 AFTER INSERT, UPDATE
 AS
 BEGIN
-    --Evita los mensajes de "filas afectadas"
+
     SET NOCOUNT ON;
 
-    --En un UPDATE solo se controla si cambio algo que afecta la superposicion
-    --(asi, modificar otros campos de un alquiler de origen superpuesto no falla).
-    --En un INSERT, UPDATE() devuelve verdadero para todas las columnas.
-    IF NOT (UPDATE(bicicleta_alquiler_id) OR UPDATE(fecha_inicio)
-            OR UPDATE(fecha_devolucion_pactada) OR UPDATE(fecha_devolucion_real))
-        RETURN;
-
     --Busca otro alquiler de la misma bici cuyo rango de fechas se pise con el insertado o modificado
-    IF EXISTS (
+     IF EXISTS (
         SELECT 1
         FROM inserted i
-        JOIN MEGA_DB.Alquiler a ON a.bicicleta_alquiler_id = i.bicicleta_alquiler_id
-                               AND a.alquiler_id <> i.alquiler_id
-        WHERE i.fecha_inicio < ISNULL(a.fecha_devolucion_real, a.fecha_devolucion_pactada)
-          AND a.fecha_inicio < ISNULL(i.fecha_devolucion_real, i.fecha_devolucion_pactada)
+        JOIN MEGA_DB.Alquiler a
+            ON a.bicicleta_alquiler_id = i.bicicleta_alquiler_id
+           AND a.alquiler_id <> i.alquiler_id
+        WHERE
+            i.fecha_inicio < ISNULL(a.fecha_devolucion_real, '9999-12-31') 
+            --Si la fecha devolucion REAL es NULL, entonces el alquiler no termino, su rango de fechas iria de fecha_inicio hasta "infinito"
+        AND a.fecha_inicio < ISNULL(i.fecha_devolucion_real, '9999-12-31')
     )
-        --Si hay superposicion se cancela la operacion (el error deshace la sentencia)
+    BEGIN
         THROW 50001, 'La bicicleta ya tiene un alquiler en ese rango de fechas', 1;
+    END
 END
 GO
 
