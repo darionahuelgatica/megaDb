@@ -1,0 +1,530 @@
+// =====================================================
+// UBICACION
+// =====================================================
+
+Table Provincia {
+  provincia_id int [pk, increment]
+  nombre varchar(255) [not null]
+
+  indexes {
+    nombre [unique, name: 'UQ_Provincia_Nombre']
+  }
+}
+
+Table Localidad {
+  localidad_id int [pk, increment]
+  provincia_id int [not null]
+  nombre varchar(255) [not null]
+
+  indexes {
+    (provincia_id, nombre) [unique, name: 'UQ_Localidad_Provincia_Nombre']
+  }
+}
+
+
+// =====================================================
+// PERSONAS
+// =====================================================
+
+Table Persona {
+  persona_id int [pk, increment]
+  localidad_id int [not null]
+
+  nombre varchar(255) [not null]
+  apellido varchar(255) [not null]
+  dni varchar(255) [not null]
+
+  telefono varchar(255)
+  email varchar(255)
+
+  direccion varchar(255) [not null]
+  fecha_nacimiento datetime2(6) [not null]
+
+  indexes {
+    (dni, nombre, apellido, fecha_nacimiento) [unique, name: 'UQ_Persona_Dni_Nombre_Apellido_FechaNac']
+  }
+}
+
+Table Cliente {
+  persona_id int [pk]
+}
+
+Table Empleado {
+  persona_id int [pk]
+  local_id int [not null]
+
+  puesto varchar(255) [not null]
+  fecha_ingreso datetime2(6) [not null]
+}
+
+
+// =====================================================
+// LOCALES
+// =====================================================
+
+Table Local {
+  local_id int [pk, increment]
+  localidad_id int [not null]
+
+  nombre varchar(255) [not null]
+  telefono varchar(255)
+  email varchar(255)
+
+  direccion varchar(255) [not null]
+
+  indexes {
+    nombre [unique, name: 'UQ_Local_Nombre']
+  }
+}
+
+
+// =====================================================
+// PRODUCTOS
+// =====================================================
+
+Table Marca {
+  marca_id int [pk, increment]
+  nombre varchar(255) [not null]
+
+  indexes {
+    nombre [unique, name: 'UQ_Marca_Nombre']
+  }
+}
+
+Table Categoria_Bicicleta {
+  categoria_bicicleta_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Categoria_Bicicleta_Descripcion']
+  }
+}
+
+Table Modelo_Bicicleta {
+  modelo_bicicleta_id int [pk, increment]
+
+  marca_id int [not null]
+  categoria_bicicleta_id int [not null]
+
+  modelo varchar(255) [not null]
+  rodado varchar(255) [not null]
+  cuadro varchar(255) [not null]
+  color varchar(255) [not null]
+
+  indexes {
+    (modelo, rodado, cuadro, color) [unique, name: 'UQ_Modelo_Bicicleta_Atributos']
+  }
+}
+
+Table Tipo_Producto {
+  tipo_producto_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Tipo_Producto_Descripcion']
+  }
+}
+
+Table Producto {
+  producto_id int [pk, increment]
+
+  cod_producto varchar(255) [not null]
+  tipo_producto_id int [not null]
+
+  nombre varchar(255) [not null]
+  descripcion varchar(255)
+
+  precio_venta numeric(38,2) [not null]
+
+  indexes {
+    cod_producto [unique, name: 'UQ_Producto_Cod']
+  }
+
+  checks {
+    `precio_venta >= 0` [name: 'CK_Producto_Precio']
+  }
+}
+
+Table Bicicleta_Venta {
+  producto_id int [pk]
+  modelo_bicicleta_id int [not null]
+  meses_garantia int [not null]
+
+  checks {
+    `meses_garantia >= 0` [name: 'CK_Bicicleta_Venta_Garantia']
+  }
+}
+
+Table Categoria_Accesorio {
+  categoria_accesorio_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Categoria_Accesorio_Descripcion']
+  }
+}
+
+Table Accesorio {
+  producto_id int [pk]
+
+  marca_id int [not null]
+  categoria_accesorio_id int [not null]
+
+  talle varchar(255)
+  color varchar(255) [not null]
+}
+
+
+// =====================================================
+// FORMA DE PAGO
+// =====================================================
+
+Table Forma_Pago {
+  forma_pago_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Forma_Pago_Descripcion']
+  }
+
+  Note: 'Efectivo / Tarjeta / Transferencia'
+}
+
+
+// =====================================================
+// VENTAS
+// =====================================================
+
+Table Venta {
+  venta_id int [pk, increment]
+  nro_venta int [not null]
+
+  local_id int [not null]
+  cliente_id int [not null]
+  empleado_id int [not null]
+  forma_pago_id int [not null]
+
+  fecha_venta datetime2(6) [not null]
+  total numeric(38,2) [not null]
+
+  indexes {
+    nro_venta [unique, name: 'UQ_Venta_Nro']
+  }
+}
+
+Table Venta_Detalle {
+  venta_detalle_id int [pk, increment]
+
+  venta_id int [not null]
+  producto_id int [not null]
+
+  cantidad int [not null]
+  precio_unitario numeric(38,2) [not null]
+  subtotal numeric(38,2) [not null]
+
+  checks {
+    `cantidad > 0 AND precio_unitario >= 0` [name: 'CK_Venta_Detalle_Valores']
+  }
+}
+
+
+// =====================================================
+// ALQUILERES
+// =====================================================
+
+Table Estado_Bicicleta_Alquiler {
+  estado_bicicleta_alquiler_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Estado_Bicicleta_Alquiler_Descripcion']
+  }
+
+  Note: 'Disponible / Alquilada / De baja'
+}
+
+Table Bicicleta_Alquiler {
+  bicicleta_alquiler_id int [pk, increment]
+  nro_serie varchar(255) [not null]
+
+  modelo_bicicleta_id int [not null]
+  local_id int [not null]
+  estado_bicicleta_alquiler_id int [not null]
+
+  precio_hora numeric(38,2) [not null]
+  precio_dia numeric(38,2) [not null]
+
+  indexes {
+    nro_serie [unique, name: 'UQ_Bicicleta_Alquiler_Nro_Serie']
+  }
+}
+
+Table Estado_Alquiler {
+  estado_alquiler_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Estado_Alquiler_Descripcion']
+  }
+
+  Note: 'Reservado / En curso / Devuelto / Vencido'
+}
+
+Table Alquiler {
+  alquiler_id int [pk, increment]
+  nro_alquiler int [not null]
+
+  cliente_id int [not null]
+  empleado_id int [not null]
+  bicicleta_alquiler_id int [not null]
+  estado_alquiler_id int [not null]
+  forma_pago_id int [not null]
+
+  fecha_inicio datetime2(6) [not null]
+  fecha_devolucion_pactada datetime2(6) [not null]
+
+  // Puede ser NULL mientras el alquiler siga abierto
+  fecha_devolucion_real datetime2(6)
+
+  importe_total numeric(38,2) [not null]
+
+  indexes {
+    nro_alquiler [unique, name: 'UQ_Alquiler_Nro']
+  }
+
+  checks {
+    `fecha_devolucion_pactada >= fecha_inicio AND (fecha_devolucion_real IS NULL OR fecha_devolucion_real >= fecha_inicio)` [name: 'CK_Alquiler_Fechas']
+  }
+}
+
+
+// =====================================================
+// REPARACIONES
+// =====================================================
+
+Table Categoria_Repuesto {
+  categoria_repuesto_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Categoria_Repuesto_Descripcion']
+  }
+}
+
+Table Repuesto {
+  repuesto_id int [pk, increment]
+  cod_repuesto varchar(255) [not null]
+
+  categoria_repuesto_id int [not null]
+
+  descripcion varchar(255) [not null]
+  compatibilidad varchar(255)
+  precio numeric(38,2) [not null]
+
+  indexes {
+    cod_repuesto [unique, name: 'UQ_Repuesto_Cod']
+  }
+}
+
+Table Estado_Reparacion {
+  estado_reparacion_id int [pk, increment]
+  descripcion varchar(255) [not null]
+
+  indexes {
+    descripcion [unique, name: 'UQ_Estado_Reparacion_Descripcion']
+  }
+
+  Note: 'Presupuestada / En proceso / Lista / Entregada'
+}
+
+Table Reparacion {
+  reparacion_id int [pk, increment]
+  nro_reparacion int [not null]
+
+  local_id int [not null]
+  cliente_id int [not null]
+  empleado_id int [not null]
+  modelo_bicicleta_id int [not null]
+  estado_reparacion_id int [not null]
+
+  numero_serie_bici varchar(255)
+
+  fecha_ingreso datetime2(6) [not null]
+  fecha_entrega_estimada datetime2(6) [not null]
+
+  // Puede ser NULL hasta que la reparación sea entregada
+  fecha_entrega_real datetime2(6)
+
+  diagnostico varchar(255) [not null]
+
+  precio_mano_obra numeric(38,2) [not null]
+  precio_repuestos numeric(38,2) [not null]
+  precio_total numeric(38,2) [not null]
+
+  indexes {
+    nro_reparacion [unique, name: 'UQ_Reparacion_Nro']
+  }
+
+  checks {
+    `fecha_entrega_estimada >= fecha_ingreso AND (fecha_entrega_real IS NULL OR fecha_entrega_real >= fecha_ingreso)` [name: 'CK_Reparacion_Fechas']
+  }
+}
+
+Table Reparacion_Repuesto {
+  reparacion_repuesto_id int [pk, increment]
+
+  reparacion_id int [not null]
+  repuesto_id int [not null]
+
+  cantidad int [not null]
+  precio_unitario numeric(38,2) [not null]
+  subtotal numeric(38,2) [not null]
+
+  checks {
+    `cantidad > 0 AND precio_unitario >= 0` [name: 'CK_Reparacion_Repuesto_Valores']
+  }
+}
+
+
+// =====================================================
+// COMPRAS
+// =====================================================
+
+Table Proveedor {
+  proveedor_id int [pk, increment]
+  localidad_id int [not null]
+
+  razon_social varchar(255) [not null]
+  cuit varchar(255) [not null]
+
+  telefono varchar(255)
+  email varchar(255)
+
+  direccion varchar(255) [not null]
+
+  indexes {
+    cuit [unique, name: 'UQ_Proveedor_Cuit']
+  }
+}
+
+Table Compra {
+  compra_id int [pk, increment]
+  nro_compra int [not null]
+
+  proveedor_id int [not null]
+  local_id int [not null]
+  empleado_id int [not null]
+  fecha_compra datetime2(6) [not null]
+
+  total numeric(38,2) [not null]
+
+  indexes {
+    nro_compra [unique, name: 'UQ_Compra_Nro']
+  }
+}
+
+Table Compra_Detalle {
+  compra_detalle_id int [pk, increment]
+
+  compra_id int [not null]
+  producto_id int [not null]
+
+  cantidad int [not null]
+  precio_unitario numeric(38,2) [not null]
+
+  checks {
+    `cantidad > 0 AND precio_unitario >= 0` [name: 'CK_Compra_Detalle_Valores']
+  }
+}
+
+
+// =====================================================
+// RELACIONES - UBICACION
+// =====================================================
+
+Ref: Localidad.provincia_id > Provincia.provincia_id
+Ref: Persona.localidad_id > Localidad.localidad_id
+Ref: Local.localidad_id > Localidad.localidad_id
+Ref: Proveedor.localidad_id > Localidad.localidad_id
+
+
+// =====================================================
+// RELACIONES - PERSONAS
+// =====================================================
+
+// Cliente y Empleado son roles/especializaciones de Persona
+Ref: Cliente.persona_id - Persona.persona_id
+Ref: Empleado.persona_id - Persona.persona_id
+Ref: Empleado.local_id > Local.local_id
+
+
+// =====================================================
+// RELACIONES - PRODUCTOS
+// =====================================================
+
+Ref: Modelo_Bicicleta.marca_id > Marca.marca_id
+Ref: Modelo_Bicicleta.categoria_bicicleta_id > Categoria_Bicicleta.categoria_bicicleta_id
+
+Ref: Producto.tipo_producto_id > Tipo_Producto.tipo_producto_id
+
+Ref: Bicicleta_Venta.producto_id - Producto.producto_id
+Ref: Bicicleta_Venta.modelo_bicicleta_id > Modelo_Bicicleta.modelo_bicicleta_id
+
+Ref: Accesorio.producto_id - Producto.producto_id
+Ref: Accesorio.marca_id > Marca.marca_id
+Ref: Accesorio.categoria_accesorio_id > Categoria_Accesorio.categoria_accesorio_id
+
+
+// =====================================================
+// RELACIONES - VENTAS
+// =====================================================
+
+Ref: Venta.local_id > Local.local_id
+Ref: Venta.cliente_id > Cliente.persona_id
+Ref: Venta.empleado_id > Empleado.persona_id
+Ref: Venta.forma_pago_id > Forma_Pago.forma_pago_id
+
+Ref: Venta_Detalle.venta_id > Venta.venta_id
+Ref: Venta_Detalle.producto_id > Producto.producto_id
+
+
+// =====================================================
+// RELACIONES - ALQUILERES
+// =====================================================
+
+Ref: Bicicleta_Alquiler.modelo_bicicleta_id > Modelo_Bicicleta.modelo_bicicleta_id
+Ref: Bicicleta_Alquiler.local_id > Local.local_id
+Ref: Bicicleta_Alquiler.estado_bicicleta_alquiler_id > Estado_Bicicleta_Alquiler.estado_bicicleta_alquiler_id
+
+Ref: Alquiler.cliente_id > Cliente.persona_id
+Ref: Alquiler.empleado_id > Empleado.persona_id
+Ref: Alquiler.bicicleta_alquiler_id > Bicicleta_Alquiler.bicicleta_alquiler_id
+Ref: Alquiler.estado_alquiler_id > Estado_Alquiler.estado_alquiler_id
+Ref: Alquiler.forma_pago_id > Forma_Pago.forma_pago_id
+
+
+// =====================================================
+// RELACIONES - REPARACIONES
+// =====================================================
+
+Ref: Repuesto.categoria_repuesto_id > Categoria_Repuesto.categoria_repuesto_id
+
+Ref: Reparacion.local_id > Local.local_id
+Ref: Reparacion.cliente_id > Cliente.persona_id
+Ref: Reparacion.empleado_id > Empleado.persona_id
+Ref: Reparacion.modelo_bicicleta_id > Modelo_Bicicleta.modelo_bicicleta_id
+Ref: Reparacion.estado_reparacion_id > Estado_Reparacion.estado_reparacion_id
+
+Ref: Reparacion_Repuesto.reparacion_id > Reparacion.reparacion_id
+Ref: Reparacion_Repuesto.repuesto_id > Repuesto.repuesto_id
+
+
+// =====================================================
+// RELACIONES - COMPRAS
+// =====================================================
+
+Ref: Compra.proveedor_id > Proveedor.proveedor_id
+Ref: Compra.local_id > Local.local_id
+Ref: Compra.empleado_id > Empleado.persona_id
+Ref: Compra_Detalle.compra_id > Compra.compra_id
+Ref: Compra_Detalle.producto_id > Producto.producto_id
