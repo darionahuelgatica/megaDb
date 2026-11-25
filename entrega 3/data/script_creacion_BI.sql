@@ -739,5 +739,5 @@ ON MEGA_DB.BI_Hecho_Compra_Producto (tipo_producto_id)
 INCLUDE (cantidad_compras, unidades);
 GO
 
-PRINT 'Modelo BI creado y cargado. Revisar el resultado de la vista de control.';
+PRINT 'Modelo BI creado y cargado con exito.';
 GO
