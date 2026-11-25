@@ -1,0 +1,218 @@
+// =====================================================
+// DIMENSIONES
+// =====================================================
+
+Table BI_Tiempo {
+  tiempo_id int [pk, not null]
+  anio int [not null]
+  trimestre int [not null]
+  mes int [not null]
+
+  indexes {
+    (anio, mes) [unique]
+  }
+}
+
+Table BI_Local {
+  local_id int [pk, not null]
+  nombre varchar(255) [not null]
+  localidad varchar(255) [not null]
+  provincia varchar(255) [not null]
+}
+
+Table BI_Rango_Etario {
+  rango_etario_id int [pk, not null]
+  descripcion varchar(255) [not null]
+  edad_desde int
+  edad_hasta int
+}
+
+Table BI_Tipo_Producto {
+  tipo_producto_id int [pk, not null]
+  descripcion varchar(255) [not null]
+}
+
+Table BI_Categoria_Bicicleta {
+  categoria_bicicleta_id int [pk, not null]
+  descripcion varchar(255) [not null]
+}
+
+Table BI_Categoria_Repuesto {
+  categoria_repuesto_id int [pk, not null]
+  descripcion varchar(255) [not null]
+}
+
+Table BI_Tipo_Ingreso_Reparacion {
+  tipo_ingreso_id int [pk, not null]
+  descripcion varchar(255) [not null]
+}
+
+
+// =====================================================
+// HECHOS - VENTAS
+// =====================================================
+
+Table BI_Hecho_Venta {
+  tiempo_id int [not null]
+  local_id int [not null]
+  rango_etario_id int [not null]
+  tipo_producto_id int [not null]
+  cantidad_ventas int [not null]
+  unidades int [not null]
+  importe numeric(38,2) [not null]
+
+  indexes {
+    (tiempo_id, local_id, rango_etario_id, tipo_producto_id) [pk]
+    (tipo_producto_id, rango_etario_id) [name: 'IX_BI_Hecho_Venta_Tipo_Rango']
+  }
+}
+
+
+// =====================================================
+// HECHOS - ALQUILERES
+// =====================================================
+
+Table BI_Hecho_Alquiler {
+  tiempo_id int [not null]
+  local_id int [not null]
+  categoria_bicicleta_id int [not null]
+  cantidad_alquileres int [not null]
+  cantidad_finalizados int [not null]
+  horas_totales decimal(38,6) [not null]
+  importe numeric(38,2) [not null]
+
+  indexes {
+    (tiempo_id, local_id, categoria_bicicleta_id) [pk]
+    categoria_bicicleta_id [name: 'IX_BI_Hecho_Alquiler_Categoria']
+  }
+}
+
+
+// =====================================================
+// HECHOS - REPARACIONES
+// =====================================================
+
+Table BI_Hecho_Reparacion {
+  tiempo_id int [not null]
+  local_id int [not null]
+  cantidad_reparaciones int [not null]
+  cantidad_entregadas int [not null]
+  desvio_total_dias decimal(38,6) [not null]
+  importe numeric(38,2) [not null]
+
+  indexes {
+    (tiempo_id, local_id) [pk]
+  }
+}
+
+Table BI_Hecho_Ingreso_Reparacion {
+  tiempo_id int [not null]
+  local_id int [not null]
+  tipo_ingreso_id int [not null]
+  importe numeric(38,2) [not null]
+
+  indexes {
+    (tiempo_id, local_id, tipo_ingreso_id) [pk]
+  }
+}
+
+Table BI_Hecho_Repuesto {
+  tiempo_id int [not null]
+  local_id int [not null]
+  categoria_repuesto_id int [not null]
+  unidades int [not null]
+
+  indexes {
+    (tiempo_id, local_id, categoria_repuesto_id) [pk]
+    categoria_repuesto_id [name: 'IX_BI_Hecho_Repuesto_Categoria']
+  }
+}
+
+
+// =====================================================
+// HECHOS - COMPRAS
+// =====================================================
+
+Table BI_Hecho_Compra {
+  tiempo_id int [not null]
+  local_id int [not null]
+  cantidad_compras int [not null]
+  importe numeric(38,2) [not null]
+
+  indexes {
+    (tiempo_id, local_id) [pk]
+  }
+}
+
+Table BI_Hecho_Compra_Producto {
+  tiempo_id int [not null]
+  local_id int [not null]
+  tipo_producto_id int [not null]
+  cantidad_compras int [not null]
+  unidades int [not null]
+
+  indexes {
+    (tiempo_id, local_id, tipo_producto_id) [pk]
+    tipo_producto_id [name: 'IX_BI_Hecho_Compra_Producto_Tipo']
+  }
+}
+
+
+// =====================================================
+// RELACIONES - VENTAS
+// =====================================================
+
+Ref: BI_Hecho_Venta.tiempo_id > BI_Tiempo.tiempo_id
+
+Ref: BI_Hecho_Venta.local_id > BI_Local.local_id
+
+Ref: BI_Hecho_Venta.rango_etario_id > BI_Rango_Etario.rango_etario_id
+
+Ref: BI_Hecho_Venta.tipo_producto_id > BI_Tipo_Producto.tipo_producto_id
+
+
+// =====================================================
+// RELACIONES - ALQUILERES
+// =====================================================
+
+Ref: BI_Hecho_Alquiler.tiempo_id > BI_Tiempo.tiempo_id
+
+Ref: BI_Hecho_Alquiler.local_id > BI_Local.local_id
+
+Ref: BI_Hecho_Alquiler.categoria_bicicleta_id > BI_Categoria_Bicicleta.categoria_bicicleta_id
+
+
+// =====================================================
+// RELACIONES - REPARACIONES
+// =====================================================
+
+Ref: BI_Hecho_Reparacion.tiempo_id > BI_Tiempo.tiempo_id
+
+Ref: BI_Hecho_Reparacion.local_id > BI_Local.local_id
+
+Ref: BI_Hecho_Ingreso_Reparacion.tiempo_id > BI_Tiempo.tiempo_id
+
+Ref: BI_Hecho_Ingreso_Reparacion.local_id > BI_Local.local_id
+
+Ref: BI_Hecho_Ingreso_Reparacion.tipo_ingreso_id > BI_Tipo_Ingreso_Reparacion.tipo_ingreso_id
+
+Ref: BI_Hecho_Repuesto.tiempo_id > BI_Tiempo.tiempo_id
+
+Ref: BI_Hecho_Repuesto.local_id > BI_Local.local_id
+
+Ref: BI_Hecho_Repuesto.categoria_repuesto_id > BI_Categoria_Repuesto.categoria_repuesto_id
+
+
+// =====================================================
+// RELACIONES - COMPRAS
+// =====================================================
+
+Ref: BI_Hecho_Compra.tiempo_id > BI_Tiempo.tiempo_id
+
+Ref: BI_Hecho_Compra.local_id > BI_Local.local_id
+
+Ref: BI_Hecho_Compra_Producto.tiempo_id > BI_Tiempo.tiempo_id
+
+Ref: BI_Hecho_Compra_Producto.local_id > BI_Local.local_id
+
+Ref: BI_Hecho_Compra_Producto.tipo_producto_id > BI_Tipo_Producto.tipo_producto_id

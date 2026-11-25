@@ -12,12 +12,12 @@ SET NOCOUNT ON;
 GO
 
 /* =====================================================================
-   1. CREACION DE TABLAS
+   1. CREACION DE DIMENSIONES
    Se conservan los IDs del transaccional. Las dimensiones de dominio
    propias de BI se cargan con IDs fijos.
    ===================================================================== */
 
---Meses en los que hubo alguna operacio
+--Meses en los que hubo alguna operacion. PK = anio * 100 + mes
 CREATE TABLE MEGA_DB.[BI_Tiempo] (
     [tiempo_id] INT PRIMARY KEY,
     [anio] INT NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE MEGA_DB.[BI_Rango_Etario] (
 );
 GO
 
---Tipos de producto
+--Tipos de producto (bicicleta / accesorio)
 CREATE TABLE MEGA_DB.[BI_Tipo_Producto] (
     [tipo_producto_id] INT PRIMARY KEY,
     [descripcion] VARCHAR(255) NOT NULL
@@ -73,85 +73,100 @@ CREATE TABLE MEGA_DB.[BI_Tipo_Ingreso_Reparacion] (
 );
 GO
 
---Una fila por venta; se conserva el total original de la cabecera
-CREATE TABLE MEGA_DB.[BI_Venta] (
-    [venta_id] INT PRIMARY KEY,
+/* =====================================================================
+   2. CREACION DE HECHOS
+   Cada hecho guarda medidas agregadas por la combinacion de sus
+   dimensiones (la PK es esa combinacion). Se guardan sumas y conteos,
+   no promedios, para que las vistas calculen los promedios sin
+   promediar promedios.
+   ===================================================================== */
+
+--Ventas por mes, local, rango etario del cliente y tipo de producto.
+--cantidad_ventas: ventas distintas que incluyen ese tipo de producto.
+CREATE TABLE MEGA_DB.[BI_Hecho_Venta] (
     [tiempo_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tiempo]([tiempo_id]),
     [local_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Local]([local_id]),
     [rango_etario_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Rango_Etario]([rango_etario_id]),
-    [total] NUMERIC(38,2) NOT NULL
-);
-GO
-
---Una fila por detalle de venta, con su tipo de producto y subtotal original
-CREATE TABLE MEGA_DB.[BI_Venta_Detalle] (
-    [venta_detalle_id] INT PRIMARY KEY,
-    [venta_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Venta]([venta_id]),
     [tipo_producto_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tipo_Producto]([tipo_producto_id]),
-    [cantidad] INT NOT NULL,
-    [subtotal] NUMERIC(38,2) NOT NULL
+    [cantidad_ventas] INT NOT NULL,
+    [unidades] INT NOT NULL,
+    [importe] NUMERIC(38,2) NOT NULL,
+    PRIMARY KEY ([tiempo_id], [local_id], [rango_etario_id], [tipo_producto_id])
 );
 GO
 
---Una fila por alquiler, con la duracion real en horas si se conoce
-CREATE TABLE MEGA_DB.[BI_Alquiler] (
-    [alquiler_id] INT PRIMARY KEY,
+--Alquileres por mes de inicio, local de la bicicleta y categoria de bicicleta.
+--horas_totales suma solo la duracion de los alquileres con devolucion real.
+CREATE TABLE MEGA_DB.[BI_Hecho_Alquiler] (
     [tiempo_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tiempo]([tiempo_id]),
     [local_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Local]([local_id]),
     [categoria_bicicleta_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Categoria_Bicicleta]([categoria_bicicleta_id]),
-    [horas_reales] DECIMAL(20,6) NULL,
-    [importe_total] NUMERIC(38,2) NOT NULL
+    [cantidad_alquileres] INT NOT NULL,
+    [cantidad_finalizados] INT NOT NULL,
+    [horas_totales] DECIMAL(38,6) NOT NULL,
+    [importe] NUMERIC(38,2) NOT NULL,
+    PRIMARY KEY ([tiempo_id], [local_id], [categoria_bicicleta_id])
 );
 GO
 
---Una fila por reparacion, con su total y desvio de entrega en dias
-CREATE TABLE MEGA_DB.[BI_Reparacion] (
-    [reparacion_id] INT PRIMARY KEY,
+--Reparaciones por mes de ingreso y local.
+--desvio_total_dias suma (entrega real - estimada) solo de las reparaciones entregadas.
+CREATE TABLE MEGA_DB.[BI_Hecho_Reparacion] (
     [tiempo_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tiempo]([tiempo_id]),
     [local_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Local]([local_id]),
-    [desvio_dias] DECIMAL(20,6) NULL,
-    [precio_total] NUMERIC(38,2) NOT NULL
+    [cantidad_reparaciones] INT NOT NULL,
+    [cantidad_entregadas] INT NOT NULL,
+    [desvio_total_dias] DECIMAL(38,6) NOT NULL,
+    [importe] NUMERIC(38,2) NOT NULL,
+    PRIMARY KEY ([tiempo_id], [local_id])
 );
 GO
 
---Dos filas por reparacion: mano de obra y repuestos
-CREATE TABLE MEGA_DB.[BI_Ingreso_Reparacion] (
-    [reparacion_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Reparacion]([reparacion_id]),
+--Facturacion de reparaciones por mes de ingreso, local y tipo de ingreso
+CREATE TABLE MEGA_DB.[BI_Hecho_Ingreso_Reparacion] (
+    [tiempo_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tiempo]([tiempo_id]),
+    [local_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Local]([local_id]),
     [tipo_ingreso_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tipo_Ingreso_Reparacion]([tipo_ingreso_id]),
     [importe] NUMERIC(38,2) NOT NULL,
-    PRIMARY KEY ([reparacion_id], [tipo_ingreso_id])
+    PRIMARY KEY ([tiempo_id], [local_id], [tipo_ingreso_id])
 );
 GO
 
---Una fila por renglon de repuesto usado, con su categoria y cantidad
-CREATE TABLE MEGA_DB.[BI_Reparacion_Repuesto] (
-    [reparacion_repuesto_id] INT PRIMARY KEY,
-    [reparacion_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Reparacion]([reparacion_id]),
-    [categoria_repuesto_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Categoria_Repuesto]([categoria_repuesto_id]),
-    [cantidad] INT NOT NULL
-);
-GO
-
---Una fila por compra; se conserva el total original de la cabecera
-CREATE TABLE MEGA_DB.[BI_Compra] (
-    [compra_id] INT PRIMARY KEY,
+--Repuestos utilizados por mes de ingreso de la reparacion, local y categoria de repuesto
+CREATE TABLE MEGA_DB.[BI_Hecho_Repuesto] (
     [tiempo_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tiempo]([tiempo_id]),
     [local_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Local]([local_id]),
-    [total] NUMERIC(38,2) NOT NULL
+    [categoria_repuesto_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Categoria_Repuesto]([categoria_repuesto_id]),
+    [unidades] INT NOT NULL,
+    PRIMARY KEY ([tiempo_id], [local_id], [categoria_repuesto_id])
 );
 GO
 
---Una fila por renglon de compra, con tipo de producto y cantidad
-CREATE TABLE MEGA_DB.[BI_Compra_Detalle] (
-    [compra_detalle_id] INT PRIMARY KEY,
-    [compra_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Compra]([compra_id]),
+--Compras por mes y local, con el total original de cada compra.
+--El total no se puede repartir por tipo de producto (ver Inconsistencias - Totales de compra).
+CREATE TABLE MEGA_DB.[BI_Hecho_Compra] (
+    [tiempo_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tiempo]([tiempo_id]),
+    [local_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Local]([local_id]),
+    [cantidad_compras] INT NOT NULL,
+    [importe] NUMERIC(38,2) NOT NULL,
+    PRIMARY KEY ([tiempo_id], [local_id])
+);
+GO
+
+--Unidades compradas por mes, local y tipo de producto.
+--cantidad_compras: compras distintas que incluyen ese tipo de producto.
+CREATE TABLE MEGA_DB.[BI_Hecho_Compra_Producto] (
+    [tiempo_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tiempo]([tiempo_id]),
+    [local_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Local]([local_id]),
     [tipo_producto_id] INT NOT NULL FOREIGN KEY REFERENCES MEGA_DB.[BI_Tipo_Producto]([tipo_producto_id]),
-    [cantidad] INT NOT NULL
+    [cantidad_compras] INT NOT NULL,
+    [unidades] INT NOT NULL,
+    PRIMARY KEY ([tiempo_id], [local_id], [tipo_producto_id])
 );
 GO
 
 /* =====================================================================
-   2. MIGRACION AL MODELO BI
+   3. MIGRACION AL MODELO BI
    Se realiza una carga completa desde las tablas del modelo relacional.
    ===================================================================== */
 
@@ -162,17 +177,16 @@ BEGIN
     SET XACT_ABORT ON;
 
     BEGIN TRY
-        BEGIN TRAN
+        BEGIN TRAN;
 
-        --Si se vuelve a ejecutar el SP, primero se eliminan los datos anteriores.
-        DELETE FROM MEGA_DB.BI_Compra_Detalle;
-        DELETE FROM MEGA_DB.BI_Reparacion_Repuesto;
-        DELETE FROM MEGA_DB.BI_Ingreso_Reparacion;
-        DELETE FROM MEGA_DB.BI_Venta_Detalle;
-        DELETE FROM MEGA_DB.BI_Compra;
-        DELETE FROM MEGA_DB.BI_Reparacion;
-        DELETE FROM MEGA_DB.BI_Alquiler;
-        DELETE FROM MEGA_DB.BI_Venta;
+        --Si se vuelve a ejecutar el SP, primero se eliminan los datos anteriores (hechos y luego dimensiones).
+        DELETE FROM MEGA_DB.BI_Hecho_Compra_Producto;
+        DELETE FROM MEGA_DB.BI_Hecho_Compra;
+        DELETE FROM MEGA_DB.BI_Hecho_Repuesto;
+        DELETE FROM MEGA_DB.BI_Hecho_Ingreso_Reparacion;
+        DELETE FROM MEGA_DB.BI_Hecho_Reparacion;
+        DELETE FROM MEGA_DB.BI_Hecho_Alquiler;
+        DELETE FROM MEGA_DB.BI_Hecho_Venta;
         DELETE FROM MEGA_DB.BI_Tipo_Ingreso_Reparacion;
         DELETE FROM MEGA_DB.BI_Categoria_Repuesto;
         DELETE FROM MEGA_DB.BI_Categoria_Bicicleta;
@@ -211,100 +225,126 @@ BEGIN
                (3, '36 a 50 inclusive', 36, 50),
                (4, 'Mayores de 50', 51, NULL);
 
-        --Tipos y categorias del modelo relacional.
+        --Tipos de producto del modelo relacional.
         INSERT INTO MEGA_DB.BI_Tipo_Producto (tipo_producto_id, descripcion)
         SELECT tipo_producto_id, descripcion FROM MEGA_DB.Tipo_Producto;
 
-        INSERT MEGA_DB.BI_Categoria_Bicicleta (categoria_bicicleta_id, descripcion)
+        --Categorias de bicicleta del modelo relacional.
+        INSERT INTO MEGA_DB.BI_Categoria_Bicicleta (categoria_bicicleta_id, descripcion)
         SELECT categoria_bicicleta_id, descripcion FROM MEGA_DB.Categoria_Bicicleta;
 
-         INSERT INTO MEGA_DB.BI_Categoria_Repuesto (categoria_repuesto_id, descripcion)
+        --Categorias de repuesto del modelo relacional.
+        INSERT INTO MEGA_DB.BI_Categoria_Repuesto (categoria_repuesto_id, descripcion)
         SELECT categoria_repuesto_id, descripcion FROM MEGA_DB.Categoria_Repuesto;
 
-        --Tipos de ingreso establecidos segun el enunciado
+        --Tipos de ingreso establecidos segun el enunciado.
         INSERT INTO MEGA_DB.BI_Tipo_Ingreso_Reparacion (tipo_ingreso_id, descripcion)
         VALUES (1, 'Mano de Obra'), (2, 'Repuestos');
 
-        --Calcula la edad del cliente al momento de la venta y asigna su rango etario.
-        INSERT INTO MEGA_DB.BI_Venta (venta_id, tiempo_id, local_id, rango_etario_id, total)
-        SELECT venta_id,
-               YEAR(fecha_venta) * 100 + MONTH(fecha_venta),
-               local_id,
-               CASE
-                   WHEN edad < 0 THEN 0
-                   WHEN edad <= 25 THEN 1
-                   WHEN edad <= 35 THEN 2
-                   WHEN edad <= 50 THEN 3
-                   ELSE 4
-               END,
-               total
-        FROM (
-            SELECT v.venta_id, v.fecha_venta, v.local_id, v.total,
+        --Ventas: se calcula la edad del cliente al momento de la venta, se asigna su rango
+        --etario y se agregan los renglones por mes, local, rango y tipo de producto.
+        --Se usan los subtotales originales (su suma coincide con el total de cada venta).
+        WITH ventas AS (
+            SELECT venta_id,
+                   YEAR(fecha_venta) * 100 + MONTH(fecha_venta) AS tiempo_id,
+                   local_id,
                    CASE
-                       WHEN CAST(p.fecha_nacimiento AS DATE) > CAST(v.fecha_venta AS DATE) THEN -1
-                       ELSE DATEDIFF(YEAR, p.fecha_nacimiento, v.fecha_venta) -
-                            CASE
-                                WHEN DATEADD(YEAR, DATEDIFF(YEAR, p.fecha_nacimiento, v.fecha_venta),
-                                             CAST(p.fecha_nacimiento AS DATE)) > CAST(v.fecha_venta AS DATE)
-                                THEN 1
-                                ELSE 0
-                            END
-                   END AS edad
-            FROM MEGA_DB.Venta v
-            JOIN MEGA_DB.Persona p ON p.persona_id = v.cliente_id
-        ) edades;
-        --Se mantienen los subtotales originales y los renglones repetidos.
-        INSERT INTO MEGA_DB.BI_Venta_Detalle 
-        (venta_detalle_id, venta_id, tipo_producto_id, cantidad, subtotal)
-        SELECT d.venta_detalle_id, d.venta_id, p.tipo_producto_id, d.cantidad, d.subtotal
-        FROM MEGA_DB.Venta_Detalle d
-        JOIN MEGA_DB.Producto p ON p.producto_id = d.producto_id;
+                       WHEN edad < 0 THEN 0
+                       WHEN edad <= 25 THEN 1
+                       WHEN edad <= 35 THEN 2
+                       WHEN edad <= 50 THEN 3
+                       ELSE 4
+                   END AS rango_etario_id
+            FROM (
+                SELECT v.venta_id, v.fecha_venta, v.local_id,
+                       CASE
+                           WHEN CAST(p.fecha_nacimiento AS DATE) > CAST(v.fecha_venta AS DATE) THEN -1
+                           ELSE DATEDIFF(YEAR, p.fecha_nacimiento, v.fecha_venta) -
+                                CASE
+                                    WHEN DATEADD(YEAR, DATEDIFF(YEAR, p.fecha_nacimiento, v.fecha_venta),
+                                                 CAST(p.fecha_nacimiento AS DATE)) > CAST(v.fecha_venta AS DATE)
+                                    THEN 1
+                                    ELSE 0
+                                END
+                       END AS edad
+                FROM MEGA_DB.Venta v
+                JOIN MEGA_DB.Persona p ON p.persona_id = v.cliente_id
+            ) edades
+        )
+        INSERT INTO MEGA_DB.BI_Hecho_Venta
+            (tiempo_id, local_id, rango_etario_id, tipo_producto_id, cantidad_ventas, unidades, importe)
+        SELECT v.tiempo_id, v.local_id, v.rango_etario_id, p.tipo_producto_id,
+               COUNT(DISTINCT v.venta_id), SUM(d.cantidad), SUM(d.subtotal)
+        FROM ventas v
+        JOIN MEGA_DB.Venta_Detalle d ON d.venta_id = v.venta_id
+        JOIN MEGA_DB.Producto p ON p.producto_id = d.producto_id
+        GROUP BY v.tiempo_id, v.local_id, v.rango_etario_id, p.tipo_producto_id;
 
         --Alquileres: se utiliza el local de la bicicleta, no el del empleado.
-        --Se calcula la duracion en horas a partir de la diferencia en segundos.
-        INSERT INTO MEGA_DB.BI_Alquiler (alquiler_id, tiempo_id, local_id, categoria_bicicleta_id, horas_reales, importe_total)
-        SELECT a.alquiler_id,
-               YEAR(a.fecha_inicio) * 100 + MONTH(a.fecha_inicio),
+        --La duracion se calcula en segundos y se pasa a horas; solo suman los alquileres con devolucion real.
+        INSERT INTO MEGA_DB.BI_Hecho_Alquiler
+            (tiempo_id, local_id, categoria_bicicleta_id, cantidad_alquileres, cantidad_finalizados, horas_totales, importe)
+        SELECT YEAR(a.fecha_inicio) * 100 + MONTH(a.fecha_inicio),
                b.local_id,
                m.categoria_bicicleta_id,
-               DATEDIFF(SECOND, a.fecha_inicio, a.fecha_devolucion_real) / 3600.0,
-               a.importe_total
+               COUNT(*),
+               SUM(CASE WHEN a.fecha_devolucion_real IS NULL THEN 0 ELSE 1 END),
+               CAST(SUM(CASE WHEN a.fecha_devolucion_real IS NULL THEN 0
+                             ELSE DATEDIFF_BIG(SECOND, a.fecha_inicio, a.fecha_devolucion_real)
+                        END) / 3600.0 AS DECIMAL(38,6)),
+               SUM(a.importe_total)
         FROM MEGA_DB.Alquiler a
         JOIN MEGA_DB.Bicicleta_Alquiler b ON b.bicicleta_alquiler_id = a.bicicleta_alquiler_id
-        JOIN MEGA_DB.Modelo_Bicicleta m ON m.modelo_bicicleta_id = b.modelo_bicicleta_id;
+        JOIN MEGA_DB.Modelo_Bicicleta m ON m.modelo_bicicleta_id = b.modelo_bicicleta_id
+        GROUP BY YEAR(a.fecha_inicio) * 100 + MONTH(a.fecha_inicio), b.local_id, m.categoria_bicicleta_id;
 
-        --Reparaciones: se calcula el desvio en dias entre la entrega estimada y la real.
-        --Positivo si se entrego tarde, negativo si se entrego antes.
-        INSERT INTO MEGA_DB.BI_Reparacion (reparacion_id, tiempo_id, local_id, desvio_dias, precio_total)
-        SELECT reparacion_id,
-               YEAR(fecha_ingreso) * 100 + MONTH(fecha_ingreso),
+        --Reparaciones: desvio en dias entre la entrega estimada y la real (positivo si se entrego tarde,
+        --negativo si se entrego antes). Solo suman las reparaciones con fecha real de entrega.
+        INSERT INTO MEGA_DB.BI_Hecho_Reparacion
+            (tiempo_id, local_id, cantidad_reparaciones, cantidad_entregadas, desvio_total_dias, importe)
+        SELECT YEAR(fecha_ingreso) * 100 + MONTH(fecha_ingreso),
                local_id,
-               DATEDIFF(SECOND, fecha_entrega_estimada, fecha_entrega_real) / 86400.0,
-               precio_total
-        FROM MEGA_DB.Reparacion;
+               COUNT(*),
+               SUM(CASE WHEN fecha_entrega_real IS NULL THEN 0 ELSE 1 END),
+               CAST(SUM(CASE WHEN fecha_entrega_real IS NULL THEN 0
+                             ELSE DATEDIFF_BIG(SECOND, fecha_entrega_estimada, fecha_entrega_real)
+                        END) / 86400.0 AS DECIMAL(38,6)),
+               SUM(precio_total)
+        FROM MEGA_DB.Reparacion
+        GROUP BY YEAR(fecha_ingreso) * 100 + MONTH(fecha_ingreso), local_id;
 
-        --Se carga un registro por cada tipo de ingreso de la reparacion.
-        INSERT INTO MEGA_DB.BI_Ingreso_Reparacion (reparacion_id, tipo_ingreso_id, importe)
-        SELECT reparacion_id, 1, precio_mano_obra FROM MEGA_DB.Reparacion;
+        --Ingresos de reparaciones: una fila por mes, local y tipo de ingreso (1 mano de obra, 2 repuestos).
+        INSERT INTO MEGA_DB.BI_Hecho_Ingreso_Reparacion (tiempo_id, local_id, tipo_ingreso_id, importe)
+        SELECT YEAR(r.fecha_ingreso) * 100 + MONTH(r.fecha_ingreso), r.local_id, i.tipo_ingreso_id,
+               SUM(CASE i.tipo_ingreso_id WHEN 1 THEN r.precio_mano_obra ELSE r.precio_repuestos END)
+        FROM MEGA_DB.Reparacion r
+        CROSS JOIN (VALUES (1), (2)) i (tipo_ingreso_id)
+        GROUP BY YEAR(r.fecha_ingreso) * 100 + MONTH(r.fecha_ingreso), r.local_id, i.tipo_ingreso_id;
 
-        INSERT INTO MEGA_DB.BI_Ingreso_Reparacion (reparacion_id, tipo_ingreso_id, importe)
-        SELECT reparacion_id, 2, precio_repuestos FROM MEGA_DB.Reparacion;
-
-        --Repuestos usados: se conserva cada renglon y su cantidad.
-        INSERT INTO MEGA_DB.BI_Reparacion_Repuesto (reparacion_repuesto_id, reparacion_id, categoria_repuesto_id, cantidad)
-        SELECT d.reparacion_repuesto_id, d.reparacion_id, r.categoria_repuesto_id, d.cantidad
+        --Repuestos utilizados: unidades por mes de ingreso de la reparacion, local y categoria.
+        INSERT INTO MEGA_DB.BI_Hecho_Repuesto (tiempo_id, local_id, categoria_repuesto_id, unidades)
+        SELECT YEAR(r.fecha_ingreso) * 100 + MONTH(r.fecha_ingreso), r.local_id,
+               rep.categoria_repuesto_id, SUM(d.cantidad)
         FROM MEGA_DB.Reparacion_Repuesto d
-        JOIN MEGA_DB.Repuesto r ON r.repuesto_id = d.repuesto_id;
+        JOIN MEGA_DB.Reparacion r ON r.reparacion_id = d.reparacion_id
+        JOIN MEGA_DB.Repuesto rep ON rep.repuesto_id = d.repuesto_id
+        GROUP BY YEAR(r.fecha_ingreso) * 100 + MONTH(r.fecha_ingreso), r.local_id, rep.categoria_repuesto_id;
 
-        --Compras: no se recalcula el total desde los detalles.
-        INSERT INTO MEGA_DB.BI_Compra (compra_id, tiempo_id, local_id, total)
-        SELECT compra_id, YEAR(fecha_compra) * 100 + MONTH(fecha_compra), local_id, total
-        FROM MEGA_DB.Compra;
+        --Compras: se suma el total original de cada compra, sin recalcularlo desde los detalles.
+        INSERT INTO MEGA_DB.BI_Hecho_Compra (tiempo_id, local_id, cantidad_compras, importe)
+        SELECT YEAR(fecha_compra) * 100 + MONTH(fecha_compra), local_id, COUNT(*), SUM(total)
+        FROM MEGA_DB.Compra
+        GROUP BY YEAR(fecha_compra) * 100 + MONTH(fecha_compra), local_id;
 
-        INSERT INTO MEGA_DB.BI_Compra_Detalle (compra_detalle_id, compra_id, tipo_producto_id, cantidad)
-        SELECT d.compra_detalle_id, d.compra_id, p.tipo_producto_id, d.cantidad
-        FROM MEGA_DB.Compra_Detalle d
-        JOIN MEGA_DB.Producto p ON p.producto_id = d.producto_id;
+        --Unidades compradas por mes, local y tipo de producto.
+        INSERT INTO MEGA_DB.BI_Hecho_Compra_Producto
+            (tiempo_id, local_id, tipo_producto_id, cantidad_compras, unidades)
+        SELECT YEAR(c.fecha_compra) * 100 + MONTH(c.fecha_compra), c.local_id, p.tipo_producto_id,
+               COUNT(DISTINCT c.compra_id), SUM(d.cantidad)
+        FROM MEGA_DB.Compra c
+        JOIN MEGA_DB.Compra_Detalle d ON d.compra_id = c.compra_id
+        JOIN MEGA_DB.Producto p ON p.producto_id = d.producto_id
+        GROUP BY YEAR(c.fecha_compra) * 100 + MONTH(c.fecha_compra), c.local_id, p.tipo_producto_id;
 
         --Si toda la carga termino correctamente se confirman los cambios.
         COMMIT TRAN;
@@ -317,12 +357,12 @@ BEGIN
 END
 GO
 
---Se ejecuta la primera carga antes de crear los indices.
+--Se ejecuta la primera carga del modelo.
 EXEC MEGA_DB.BI_Cargar_Modelo;
 GO
 
 /* =====================================================================
-   3. VISTAS DE INDICADORES
+   4. VISTAS DE INDICADORES
    Las vistas consultan solo el modelo BI.
    ===================================================================== */
 
@@ -330,50 +370,57 @@ GO
 CREATE VIEW MEGA_DB.BI_01_Facturacion_Ventas_Mensual
 AS
 SELECT t.anio, t.mes, l.local_id, l.nombre AS local,
-       SUM(v.total) AS facturacion
-FROM MEGA_DB.BI_Venta v
-JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = v.tiempo_id
-JOIN MEGA_DB.BI_Local l ON l.local_id = v.local_id
+       SUM(h.importe) AS facturacion
+FROM MEGA_DB.BI_Hecho_Venta h
+JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+JOIN MEGA_DB.BI_Local l ON l.local_id = h.local_id
 GROUP BY t.anio, t.mes, l.local_id, l.nombre;
 GO
 
 --2. Ticket promedio mensual por tipo de producto y rango etario.
---Se divide el importe vendido por la cantidad de ventas distintas del tipo de producto.
+--Importe vendido del tipo dividido por la cantidad de ventas que incluyen ese tipo.
 CREATE VIEW MEGA_DB.BI_02_Ticket_Promedio
 AS
-SELECT t.anio, t.mes, 
+SELECT t.anio, t.mes,
        p.tipo_producto_id, p.descripcion AS tipo_producto,
        r.rango_etario_id, r.descripcion AS rango_etario,
-       CAST(SUM(d.subtotal) / COUNT(DISTINCT v.venta_id) AS DECIMAL(38,2)) AS ticket_promedio
-FROM MEGA_DB.BI_Venta v
-JOIN MEGA_DB.BI_Venta_Detalle d ON d.venta_id = v.venta_id
-JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = v.tiempo_id
-JOIN MEGA_DB.BI_Tipo_Producto p ON p.tipo_producto_id = d.tipo_producto_id
-JOIN MEGA_DB.BI_Rango_Etario r ON r.rango_etario_id = v.rango_etario_id
-GROUP BY t.anio, t.mes, p.tipo_producto_id, p.descripcion, 
+       CAST(SUM(h.importe) / SUM(h.cantidad_ventas) AS DECIMAL(38,2)) AS ticket_promedio
+FROM MEGA_DB.BI_Hecho_Venta h
+JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+JOIN MEGA_DB.BI_Tipo_Producto p ON p.tipo_producto_id = h.tipo_producto_id
+JOIN MEGA_DB.BI_Rango_Etario r ON r.rango_etario_id = h.rango_etario_id
+GROUP BY t.anio, t.mes, p.tipo_producto_id, p.descripcion,
          r.rango_etario_id, r.descripcion;
 GO
 
---3. Porcentaje de unidades vendidas por tipo de producto, local y trimestre.
+--3. Porcentaje de ventas trimestrales por tipo de producto y local,
+--calculado sobre las unidades vendidas y sobre el importe facturado.
 CREATE VIEW MEGA_DB.BI_03_Porcentaje_Ventas_Trimestral
 AS
-SELECT u.anio, u.trimestre, 
+SELECT u.anio, u.trimestre,
        l.local_id, l.nombre AS local,
        p.tipo_producto_id, p.descripcion AS tipo_producto,
-       u.cantidad,
+       u.unidades,
        CAST(
-           100.0 * u.cantidad / NULLIF(SUM(u.cantidad) OVER (
+           100.0 * u.unidades / NULLIF(SUM(u.unidades) OVER (
                PARTITION BY u.anio, u.trimestre, u.local_id
            ), 0)
            AS DECIMAL(9,4)
-       ) AS porcentaje
+       ) AS porcentaje_unidades,
+       u.importe,
+       CAST(
+           100.0 * u.importe / NULLIF(SUM(u.importe) OVER (
+               PARTITION BY u.anio, u.trimestre, u.local_id
+           ), 0)
+           AS DECIMAL(9,4)
+       ) AS porcentaje_importe
 FROM (
-    SELECT t.anio, t.trimestre, v.local_id, d.tipo_producto_id,
-           SUM(d.cantidad) AS cantidad
-    FROM MEGA_DB.BI_Venta v
-    JOIN MEGA_DB.BI_Venta_Detalle d ON d.venta_id = v.venta_id
-    JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = v.tiempo_id
-    GROUP BY t.anio, t.trimestre, v.local_id, d.tipo_producto_id
+    SELECT t.anio, t.trimestre, h.local_id, h.tipo_producto_id,
+           SUM(h.unidades) AS unidades,
+           SUM(h.importe) AS importe
+    FROM MEGA_DB.BI_Hecho_Venta h
+    JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+    GROUP BY t.anio, t.trimestre, h.local_id, h.tipo_producto_id
 ) u
 JOIN MEGA_DB.BI_Local l ON l.local_id = u.local_id
 JOIN MEGA_DB.BI_Tipo_Producto p ON p.tipo_producto_id = u.tipo_producto_id;
@@ -384,13 +431,13 @@ GO
 CREATE VIEW MEGA_DB.BI_04_Horas_Alquiler_Mensual
 AS
 SELECT t.anio, t.mes, l.local_id, l.nombre AS local,
-       AVG(a.horas_reales) AS horas_promedio, 
-       COUNT(*) AS alquileres_finalizados
-FROM MEGA_DB.BI_Alquiler a
-JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = a.tiempo_id
-JOIN MEGA_DB.BI_Local l ON l.local_id = a.local_id
-WHERE a.horas_reales IS NOT NULL
-GROUP BY t.anio, t.mes, l.local_id, l.nombre;
+       CAST(SUM(h.horas_totales) / SUM(h.cantidad_finalizados) AS DECIMAL(38,6)) AS horas_promedio,
+       SUM(h.cantidad_finalizados) AS alquileres_finalizados
+FROM MEGA_DB.BI_Hecho_Alquiler h
+JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+JOIN MEGA_DB.BI_Local l ON l.local_id = h.local_id
+GROUP BY t.anio, t.mes, l.local_id, l.nombre
+HAVING SUM(h.cantidad_finalizados) > 0;
 GO
 
 --5. Top 5 categorias de bicicletas mas alquiladas por anio.
@@ -400,32 +447,32 @@ SELECT r.anio, r.posicion, r.categoria_bicicleta_id,
        r.categoria, r.cantidad_alquileres
 FROM (
     SELECT t.anio, c.categoria_bicicleta_id, c.descripcion AS categoria,
-           COUNT(*) AS cantidad_alquileres,
+           SUM(h.cantidad_alquileres) AS cantidad_alquileres,
            ROW_NUMBER() OVER (
-               PARTITION BY t.anio 
-               ORDER BY COUNT(*) DESC, c.categoria_bicicleta_id
+               PARTITION BY t.anio
+               ORDER BY SUM(h.cantidad_alquileres) DESC, c.categoria_bicicleta_id
            ) AS posicion
-    FROM MEGA_DB.BI_Alquiler a
-    JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = a.tiempo_id
-    JOIN MEGA_DB.BI_Categoria_Bicicleta c 
-        ON c.categoria_bicicleta_id = a.categoria_bicicleta_id
+    FROM MEGA_DB.BI_Hecho_Alquiler h
+    JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+    JOIN MEGA_DB.BI_Categoria_Bicicleta c
+        ON c.categoria_bicicleta_id = h.categoria_bicicleta_id
     GROUP BY t.anio, c.categoria_bicicleta_id, c.descripcion
 ) r
 WHERE r.posicion <= 5;
 GO
 
---6. Desvio promedio de reparaciones por local y trimestre.
+--6. Desvio promedio de reparaciones (en dias) por local y trimestre.
 --Solo se consideran reparaciones con fecha real de entrega.
 CREATE VIEW MEGA_DB.BI_06_Desvio_Reparaciones
 AS
 SELECT t.anio, t.trimestre, l.local_id, l.nombre AS local,
-       AVG(r.desvio_dias) AS desvio_promedio_dias, 
-       COUNT(*) AS reparaciones_entregadas
-FROM MEGA_DB.BI_Reparacion r
-JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = r.tiempo_id
-JOIN MEGA_DB.BI_Local l ON l.local_id = r.local_id
-WHERE r.desvio_dias IS NOT NULL
-GROUP BY t.anio, t.trimestre, l.local_id, l.nombre;
+       CAST(SUM(h.desvio_total_dias) / SUM(h.cantidad_entregadas) AS DECIMAL(38,6)) AS desvio_promedio_dias,
+       SUM(h.cantidad_entregadas) AS reparaciones_entregadas
+FROM MEGA_DB.BI_Hecho_Reparacion h
+JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+JOIN MEGA_DB.BI_Local l ON l.local_id = h.local_id
+GROUP BY t.anio, t.trimestre, l.local_id, l.nombre
+HAVING SUM(h.cantidad_entregadas) > 0;
 GO
 
 --7. Ranking mensual de categorias de repuestos segun unidades utilizadas.
@@ -433,88 +480,86 @@ CREATE VIEW MEGA_DB.BI_07_Ranking_Repuestos
 AS
 SELECT t.anio, t.mes, c.categoria_repuesto_id,
        c.descripcion AS categoria,
-       SUM(d.cantidad) AS unidades,
+       SUM(h.unidades) AS unidades,
        ROW_NUMBER() OVER (
            PARTITION BY t.anio, t.mes
-           ORDER BY SUM(d.cantidad) DESC, c.categoria_repuesto_id
+           ORDER BY SUM(h.unidades) DESC, c.categoria_repuesto_id
        ) AS posicion
-FROM MEGA_DB.BI_Reparacion_Repuesto d
-JOIN MEGA_DB.BI_Reparacion r ON r.reparacion_id = d.reparacion_id
-JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = r.tiempo_id
-JOIN MEGA_DB.BI_Categoria_Repuesto c 
-    ON c.categoria_repuesto_id = d.categoria_repuesto_id
+FROM MEGA_DB.BI_Hecho_Repuesto h
+JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+JOIN MEGA_DB.BI_Categoria_Repuesto c
+    ON c.categoria_repuesto_id = h.categoria_repuesto_id
 GROUP BY t.anio, t.mes, c.categoria_repuesto_id, c.descripcion;
 GO
+
 --8. Porcentaje de facturacion de reparaciones por tipo de ingreso y trimestre.
 CREATE VIEW MEGA_DB.BI_08_Porcentaje_Ingresos_Reparacion
 AS
 SELECT i.anio, i.trimestre, p.tipo_ingreso_id,
        p.descripcion AS tipo_ingreso, i.importe,
        CAST(
-           i.importe / NULLIF(SUM(i.importe) OVER (
+           100.0 * i.importe / NULLIF(SUM(i.importe) OVER (
                PARTITION BY i.anio, i.trimestre
-           ), 0) * 100
+           ), 0)
            AS DECIMAL(9,4)
        ) AS porcentaje
 FROM (
-    SELECT t.anio, t.trimestre, i.tipo_ingreso_id,
-           SUM(i.importe) AS importe
-    FROM MEGA_DB.BI_Ingreso_Reparacion i
-    JOIN MEGA_DB.BI_Reparacion r ON r.reparacion_id = i.reparacion_id
-    JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = r.tiempo_id
-    GROUP BY t.anio, t.trimestre, i.tipo_ingreso_id
+    SELECT t.anio, t.trimestre, h.tipo_ingreso_id,
+           SUM(h.importe) AS importe
+    FROM MEGA_DB.BI_Hecho_Ingreso_Reparacion h
+    JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+    GROUP BY t.anio, t.trimestre, h.tipo_ingreso_id
 ) i
-JOIN MEGA_DB.BI_Tipo_Ingreso_Reparacion p 
+JOIN MEGA_DB.BI_Tipo_Ingreso_Reparacion p
     ON p.tipo_ingreso_id = i.tipo_ingreso_id;
 GO
 
 --9. Promedio de unidades compradas por tipo de producto y trimestre.
---Se divide la cantidad de unidades por la cantidad de compras distintas del tipo.
+--Unidades compradas del tipo divididas por la cantidad de compras que incluyen ese tipo.
 CREATE VIEW MEGA_DB.BI_09_Unidades_Compradas_Promedio
 AS
 SELECT t.anio, t.trimestre, p.tipo_producto_id,
        p.descripcion AS tipo_producto,
        CAST(
-           SUM(d.cantidad) * 1.0 / COUNT(DISTINCT c.compra_id)
+           SUM(h.unidades) * 1.0 / SUM(h.cantidad_compras)
            AS DECIMAL(28,4)
        ) AS unidades_promedio
-FROM MEGA_DB.BI_Compra c
-JOIN MEGA_DB.BI_Compra_Detalle d ON d.compra_id = c.compra_id
-JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = c.tiempo_id
-JOIN MEGA_DB.BI_Tipo_Producto p ON p.tipo_producto_id = d.tipo_producto_id
+FROM MEGA_DB.BI_Hecho_Compra_Producto h
+JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+JOIN MEGA_DB.BI_Tipo_Producto p ON p.tipo_producto_id = h.tipo_producto_id
 GROUP BY t.anio, t.trimestre, p.tipo_producto_id, p.descripcion;
 GO
 
 --10. Importe total de compras mensuales por local.
 CREATE VIEW MEGA_DB.BI_10_Importe_Compras_Mensual
 AS
-SELECT t.anio, t.mes, l.local_id, l.nombre AS local, SUM(c.total) AS importe_total
-FROM MEGA_DB.BI_Compra c
-JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = c.tiempo_id
-JOIN MEGA_DB.BI_Local l ON l.local_id = c.local_id
+SELECT t.anio, t.mes, l.local_id, l.nombre AS local, SUM(h.importe) AS importe_total
+FROM MEGA_DB.BI_Hecho_Compra h
+JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = h.tiempo_id
+JOIN MEGA_DB.BI_Local l ON l.local_id = h.local_id
 GROUP BY t.anio, t.mes, l.local_id, l.nombre;
 GO
 
 --11. Facturacion mensual del negocio por local.
---Se suman los importes registrados de ventas, alquileres y reparaciones.
+--Se suman los importes de ventas, alquileres y reparaciones.
 --Al no haber fecha de cobro, se usa el inicio del alquiler y el ingreso al taller.
 CREATE VIEW MEGA_DB.BI_11_Facturacion_Negocio_Mensual
 AS
 SELECT t.anio, t.mes, l.local_id, l.nombre AS local,
        SUM(i.importe) AS facturacion_total
 FROM (
-    SELECT tiempo_id, local_id, total AS importe
-    FROM MEGA_DB.BI_Venta
+    SELECT tiempo_id, local_id, importe
+    FROM MEGA_DB.BI_Hecho_Venta
 
     UNION ALL
 
-    SELECT tiempo_id, local_id, importe_total
-    FROM MEGA_DB.BI_Alquiler
+    SELECT tiempo_id, local_id, importe
+    FROM MEGA_DB.BI_Hecho_Alquiler
 
     UNION ALL
 
-    SELECT tiempo_id, local_id, precio_total
-    FROM MEGA_DB.BI_Reparacion
+    SELECT tiempo_id, local_id, importe
+    FROM MEGA_DB.BI_Hecho_Reparacion
 ) i
 JOIN MEGA_DB.BI_Tiempo t ON t.tiempo_id = i.tiempo_id
 JOIN MEGA_DB.BI_Local l ON l.local_id = i.local_id
@@ -522,16 +567,16 @@ GROUP BY t.anio, t.mes, l.local_id, l.nombre;
 GO
 
 /* =====================================================================
-   4. VISTA DE CONTROL DE LA MIGRACION BI
+   5. VISTA DE CONTROL DE LA MIGRACION BI
    Compara cantidades, unidades e importes con el modelo relacional.
    No es un indicador de negocio ni reemplaza la prueba de las 11 vistas.
    ===================================================================== */
-CREATE VIEW MEGA_DB.vw_Estado_Migracion_BI
+CREATE VIEW MEGA_DB.BI_vw_Estado_Migracion
 AS
 SELECT entidad, control, esperado, actual,
        CASE WHEN esperado = actual THEN 'OK' ELSE 'REVISAR' END AS estado
 FROM (
-    --Control de cantidad de registros
+    --Dimensiones: cantidad de filas
     SELECT 'Local' AS entidad, 'Filas' AS control,
            (SELECT COUNT(*) FROM MEGA_DB.Local) AS esperado,
            (SELECT COUNT(*) FROM MEGA_DB.BI_Local) AS actual
@@ -548,36 +593,13 @@ FROM (
            (SELECT COUNT(*) FROM MEGA_DB.Categoria_Repuesto),
            (SELECT COUNT(*) FROM MEGA_DB.BI_Categoria_Repuesto)
     UNION ALL
-    SELECT 'Venta', 'Filas',
-           (SELECT COUNT(*) FROM MEGA_DB.Venta),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Venta)
+    SELECT 'Rango_Etario', 'Filas', 5,
+           (SELECT COUNT(*) FROM MEGA_DB.BI_Rango_Etario)
     UNION ALL
-    SELECT 'Venta_Detalle', 'Filas',
-           (SELECT COUNT(*) FROM MEGA_DB.Venta_Detalle),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Venta_Detalle)
+    SELECT 'Tipo_Ingreso_Reparacion', 'Filas', 2,
+           (SELECT COUNT(*) FROM MEGA_DB.BI_Tipo_Ingreso_Reparacion)
     UNION ALL
-    SELECT 'Alquiler', 'Filas',
-           (SELECT COUNT(*) FROM MEGA_DB.Alquiler),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Alquiler)
-    UNION ALL
-    SELECT 'Reparacion', 'Filas',
-           (SELECT COUNT(*) FROM MEGA_DB.Reparacion),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Reparacion)
-    UNION ALL
-    SELECT 'Reparacion_Repuesto', 'Filas',
-           (SELECT COUNT(*) FROM MEGA_DB.Reparacion_Repuesto),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Reparacion_Repuesto)
-    UNION ALL
-    SELECT 'Compra', 'Filas',
-           (SELECT COUNT(*) FROM MEGA_DB.Compra),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Compra)
-    UNION ALL
-    SELECT 'Compra_Detalle', 'Filas',
-           (SELECT COUNT(*) FROM MEGA_DB.Compra_Detalle),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Compra_Detalle)
-    UNION ALL
-
-    --Control de cantidad de periodos distintos
+    --Tiempo: cantidad de meses distintos con alguna operacion
     SELECT 'Tiempo', 'Filas',
            (SELECT COUNT(*) FROM (
                 SELECT YEAR(fecha_venta) AS anio, MONTH(fecha_venta) AS mes
@@ -595,116 +617,126 @@ FROM (
            (SELECT COUNT(*) FROM MEGA_DB.BI_Tiempo)
     UNION ALL
 
-    --Control de dimensiones con valores predefinidos
-    SELECT 'Rango_Etario', 'Filas', 5,
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Rango_Etario)
+    --Hecho_Venta: pares venta/tipo de producto, unidades e importes
+    SELECT 'Hecho_Venta', 'Ventas por tipo',
+           (SELECT COUNT(*) FROM (
+                SELECT DISTINCT d.venta_id, p.tipo_producto_id
+                FROM MEGA_DB.Venta_Detalle d
+                JOIN MEGA_DB.Producto p ON p.producto_id = d.producto_id
+            ) vt),
+           (SELECT ISNULL(SUM(cantidad_ventas), 0) FROM MEGA_DB.BI_Hecho_Venta)
     UNION ALL
-    SELECT 'Tipo_Ingreso_Reparacion', 'Filas', 2,
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Tipo_Ingreso_Reparacion)
+    SELECT 'Hecho_Venta', 'Unidades',
+           (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.Venta_Detalle),
+           (SELECT ISNULL(SUM(unidades), 0) FROM MEGA_DB.BI_Hecho_Venta)
     UNION ALL
-
-    --Cada reparacion tiene dos tipos de ingreso
-    SELECT 'Ingreso_Reparacion', 'Filas',
-           (SELECT COUNT(*) * 2 FROM MEGA_DB.Reparacion),
-           (SELECT COUNT(*) FROM MEGA_DB.BI_Ingreso_Reparacion)
-    UNION ALL
-
-    --Control de importes
-    SELECT 'Venta', 'Importe',
-           (SELECT ISNULL(SUM(total), 0) FROM MEGA_DB.Venta),
-           (SELECT ISNULL(SUM(total), 0) FROM MEGA_DB.BI_Venta)
-    UNION ALL
-    SELECT 'Venta_Detalle', 'Importe',
+    SELECT 'Hecho_Venta', 'Importe (subtotales)',
            (SELECT ISNULL(SUM(subtotal), 0) FROM MEGA_DB.Venta_Detalle),
-           (SELECT ISNULL(SUM(subtotal), 0) FROM MEGA_DB.BI_Venta_Detalle)
+           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Hecho_Venta)
     UNION ALL
-    SELECT 'Alquiler', 'Importe',
+    SELECT 'Hecho_Venta', 'Importe (totales de venta)',
+           (SELECT ISNULL(SUM(total), 0) FROM MEGA_DB.Venta),
+           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Hecho_Venta)
+    UNION ALL
+
+    --Hecho_Alquiler
+    SELECT 'Hecho_Alquiler', 'Alquileres',
+           (SELECT COUNT(*) FROM MEGA_DB.Alquiler),
+           (SELECT ISNULL(SUM(cantidad_alquileres), 0) FROM MEGA_DB.BI_Hecho_Alquiler)
+    UNION ALL
+    SELECT 'Hecho_Alquiler', 'Finalizados',
+           (SELECT COUNT(*) FROM MEGA_DB.Alquiler WHERE fecha_devolucion_real IS NOT NULL),
+           (SELECT ISNULL(SUM(cantidad_finalizados), 0) FROM MEGA_DB.BI_Hecho_Alquiler)
+    UNION ALL
+    SELECT 'Hecho_Alquiler', 'Importe',
            (SELECT ISNULL(SUM(importe_total), 0) FROM MEGA_DB.Alquiler),
-           (SELECT ISNULL(SUM(importe_total), 0) FROM MEGA_DB.BI_Alquiler)
+           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Hecho_Alquiler)
     UNION ALL
-    SELECT 'Reparacion', 'Importe',
+
+    --Hechos de reparaciones
+    SELECT 'Hecho_Reparacion', 'Reparaciones',
+           (SELECT COUNT(*) FROM MEGA_DB.Reparacion),
+           (SELECT ISNULL(SUM(cantidad_reparaciones), 0) FROM MEGA_DB.BI_Hecho_Reparacion)
+    UNION ALL
+    SELECT 'Hecho_Reparacion', 'Entregadas',
+           (SELECT COUNT(*) FROM MEGA_DB.Reparacion WHERE fecha_entrega_real IS NOT NULL),
+           (SELECT ISNULL(SUM(cantidad_entregadas), 0) FROM MEGA_DB.BI_Hecho_Reparacion)
+    UNION ALL
+    SELECT 'Hecho_Reparacion', 'Importe',
            (SELECT ISNULL(SUM(precio_total), 0) FROM MEGA_DB.Reparacion),
-           (SELECT ISNULL(SUM(precio_total), 0) FROM MEGA_DB.BI_Reparacion)
+           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Hecho_Reparacion)
     UNION ALL
-    SELECT 'Compra', 'Importe',
-           (SELECT ISNULL(SUM(total), 0) FROM MEGA_DB.Compra),
-           (SELECT ISNULL(SUM(total), 0) FROM MEGA_DB.BI_Compra)
-    UNION ALL
-    SELECT 'Ingreso_Reparacion', 'Mano de obra',
+    SELECT 'Hecho_Ingreso_Reparacion', 'Mano de obra',
            (SELECT ISNULL(SUM(precio_mano_obra), 0) FROM MEGA_DB.Reparacion),
-           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Ingreso_Reparacion
+           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Hecho_Ingreso_Reparacion
             WHERE tipo_ingreso_id = 1)
     UNION ALL
-    SELECT 'Ingreso_Reparacion', 'Repuestos',
+    SELECT 'Hecho_Ingreso_Reparacion', 'Repuestos',
            (SELECT ISNULL(SUM(precio_repuestos), 0) FROM MEGA_DB.Reparacion),
-           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Ingreso_Reparacion
+           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Hecho_Ingreso_Reparacion
             WHERE tipo_ingreso_id = 2)
     UNION ALL
-
-    --Control de cantidades de productos y repuestos
-    SELECT 'Venta_Detalle', 'Unidades',
-           (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.Venta_Detalle),
-           (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.BI_Venta_Detalle)
-    UNION ALL
-    SELECT 'Compra_Detalle', 'Unidades',
-           (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.Compra_Detalle),
-           (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.BI_Compra_Detalle)
-    UNION ALL
-    SELECT 'Reparacion_Repuesto', 'Unidades',
+    SELECT 'Hecho_Repuesto', 'Unidades',
            (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.Reparacion_Repuesto),
-           (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.BI_Reparacion_Repuesto)
+           (SELECT ISNULL(SUM(unidades), 0) FROM MEGA_DB.BI_Hecho_Repuesto)
+    UNION ALL
+
+    --Hechos de compras
+    SELECT 'Hecho_Compra', 'Compras',
+           (SELECT COUNT(*) FROM MEGA_DB.Compra),
+           (SELECT ISNULL(SUM(cantidad_compras), 0) FROM MEGA_DB.BI_Hecho_Compra)
+    UNION ALL
+    SELECT 'Hecho_Compra', 'Importe',
+           (SELECT ISNULL(SUM(total), 0) FROM MEGA_DB.Compra),
+           (SELECT ISNULL(SUM(importe), 0) FROM MEGA_DB.BI_Hecho_Compra)
+    UNION ALL
+    SELECT 'Hecho_Compra_Producto', 'Compras por tipo',
+           (SELECT COUNT(*) FROM (
+                SELECT DISTINCT d.compra_id, p.tipo_producto_id
+                FROM MEGA_DB.Compra_Detalle d
+                JOIN MEGA_DB.Producto p ON p.producto_id = d.producto_id
+            ) ct),
+           (SELECT ISNULL(SUM(cantidad_compras), 0) FROM MEGA_DB.BI_Hecho_Compra_Producto)
+    UNION ALL
+    SELECT 'Hecho_Compra_Producto', 'Unidades',
+           (SELECT ISNULL(SUM(cantidad), 0) FROM MEGA_DB.Compra_Detalle),
+           (SELECT ISNULL(SUM(unidades), 0) FROM MEGA_DB.BI_Hecho_Compra_Producto)
 ) v;
 GO
 
 --Se muestra el resultado del control al ejecutar el script.
-SELECT * FROM MEGA_DB.vw_Estado_Migracion_BI;
+SELECT * FROM MEGA_DB.BI_vw_Estado_Migracion;
 GO
 
 /* =====================================================================
-   5. INDICES
-   Se crean luego de la carga inicial, igual qu el script de migracion.
+   6. INDICES
+   La PK clustered de cada hecho empieza por (tiempo_id, local_id), que es
+   por donde agrupan la mayoria de las vistas. Se agregan indices sobre la
+   otra dimension de los hechos que algunas vistas agrupan sin local.
    ===================================================================== */
 
---Venta: acceso por tiempo_id, local_id y medidas del indicador.
-CREATE NONCLUSTERED INDEX IX_BI_Venta_Periodo_Local
-ON MEGA_DB.BI_Venta (tiempo_id, local_id)
-INCLUDE (total, rango_etario_id);
+--Hecho_Venta: agrupacion por tipo de producto y rango etario (vista 2).
+CREATE NONCLUSTERED INDEX IX_BI_Hecho_Venta_Tipo_Rango
+ON MEGA_DB.BI_Hecho_Venta (tipo_producto_id, rango_etario_id)
+INCLUDE (cantidad_ventas, importe);
 GO
 
---Alquiler: acceso por tiempo_id, local_id y medidas del indicador.
-CREATE NONCLUSTERED INDEX IX_BI_Alquiler_Periodo_Local
-ON MEGA_DB.BI_Alquiler (tiempo_id, local_id)
-INCLUDE (horas_reales, importe_total, categoria_bicicleta_id);
+--Hecho_Alquiler: agrupacion por categoria de bicicleta (vista 5).
+CREATE NONCLUSTERED INDEX IX_BI_Hecho_Alquiler_Categoria
+ON MEGA_DB.BI_Hecho_Alquiler (categoria_bicicleta_id)
+INCLUDE (cantidad_alquileres);
 GO
 
---Reparacion: acceso por tiempo_id, local_id y medidas del indicador.
-CREATE NONCLUSTERED INDEX IX_BI_Reparacion_Periodo_Local
-ON MEGA_DB.BI_Reparacion (tiempo_id, local_id)
-INCLUDE (desvio_dias, precio_total);
+--Hecho_Repuesto: agrupacion por categoria de repuesto (vista 7).
+CREATE NONCLUSTERED INDEX IX_BI_Hecho_Repuesto_Categoria
+ON MEGA_DB.BI_Hecho_Repuesto (categoria_repuesto_id)
+INCLUDE (unidades);
 GO
 
---Compra: acceso por tiempo_id, local_id y medidas del indicador.
-CREATE NONCLUSTERED INDEX IX_BI_Compra_Periodo_Local
-ON MEGA_DB.BI_Compra (tiempo_id, local_id)
-INCLUDE (total);
-GO
-
---Venta_Detalle: acceso por venta_id y medidas del indicador.
-CREATE NONCLUSTERED INDEX IX_BI_Venta_Detalle_Cabecera
-ON MEGA_DB.BI_Venta_Detalle (venta_id)
-INCLUDE (tipo_producto_id, cantidad, subtotal);
-GO
-
---Compra_Detalle: acceso por compra_id y medidas del indicador.
-CREATE NONCLUSTERED INDEX IX_BI_Compra_Detalle_Cabecera
-ON MEGA_DB.BI_Compra_Detalle (compra_id)
-INCLUDE (tipo_producto_id, cantidad);
-GO
-
---Reparacion_Repuesto: acceso por reparacion_id y medidas del indicador.
-CREATE NONCLUSTERED INDEX IX_BI_Reparacion_Repuesto_Cabecera
-ON MEGA_DB.BI_Reparacion_Repuesto (reparacion_id)
-INCLUDE (categoria_repuesto_id, cantidad);
+--Hecho_Compra_Producto: agrupacion por tipo de producto (vista 9).
+CREATE NONCLUSTERED INDEX IX_BI_Hecho_Compra_Producto_Tipo
+ON MEGA_DB.BI_Hecho_Compra_Producto (tipo_producto_id)
+INCLUDE (cantidad_compras, unidades);
 GO
 
 PRINT 'Modelo BI creado y cargado. Revisar el resultado de la vista de control.';
